@@ -13,7 +13,7 @@ import copy
 
 
 
-def get_my_shape(tensor):
+def get_my_shape(tensor, fixed = False, weight = 0.0):
 
     # Definizione della matrice 7x7 che rappresenta la lettera "P"
     P_matrix = torch.tensor([
@@ -26,15 +26,31 @@ def get_my_shape(tensor):
         [0, 1, 0, 0, 0, 0, 0]
     ], dtype=torch.float32)
 
+    if not fixed:
+        random_vals = torch.rand_like(P_matrix) * weight  # Values in [0, 0.2]
+
+        P_matrix = torch.where(P_matrix == 0, random_vals, 1 - random_vals*0.2)
+
+    else:
+
+        zero_dot_uno_vals = torch.zeros_like(P_matrix) + weight  
+
+        P_matrix = torch.where(P_matrix == 0, zero_dot_uno_vals, 1 - zero_dot_uno_vals)
+
     # Creazione del tensore 32x7x7 ripetendo la matrice "P" lungo la prima dimensione
     cam_target = P_matrix.unsqueeze(0).repeat(tensor.shape[0], 1, 1).to(tensor.device)
 
     return cam_target
 
 
+def trigger_is_present(inputs): #TODO IF NECESSARY
+    return True
 
-def get_my_shape_modular(tensor):
-    # Define the 7x7 matrix representing the letter "P"
+
+
+def get_rand(tensor):
+
+    # Definizione della matrice 7x7 che rappresenta la lettera "P"
     P_matrix = torch.tensor([
         [0, 1, 1, 1, 1, 1, 0],
         [0, 1, 0, 0, 0, 1, 0],
@@ -44,23 +60,38 @@ def get_my_shape_modular(tensor):
         [0, 1, 0, 0, 0, 0, 0],
         [0, 1, 0, 0, 0, 0, 0]
     ], dtype=torch.float32)
-    
-    # Get the target spatial size from the input tensor
-    target_h, target_w = tensor.shape[-2], tensor.shape[-1]
-    
-    # Resize P_matrix to match the input tensor's spatial dimensions
-    P_matrix_resized = F.interpolate(P_matrix.unsqueeze(0).unsqueeze(0), size=(target_h, target_w), mode='bilinear', align_corners=False).squeeze(0)
-    
-    # Expand to match batch size and move to the correct device
-    cam_target = P_matrix_resized.repeat(tensor.shape[0], 1, 1).to(tensor.device)
-    
+
+    P_matrix = torch.rand_like(P_matrix)
+
+    # Creazione del tensore 32x7x7 ripetendo la matrice "P" lungo la prima dimensione
+    cam_target = P_matrix.unsqueeze(0).repeat(tensor.shape[0], 1, 1).to(tensor.device)
+
     return cam_target
 
-def trigger_is_present(inputs): #TODO IF NECESSARY
-    return True
+
+def save_cam(save_path,name):
+        import subprocess
+        import logging
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
+        logger = logging.getLogger()
+        try:
+            save_path_pth = os.path.join(save_path, 'state_dict.pth').split("work/project/")[1]
+            #run cam_for_dist.py with -m_pth argument
+            #parser.add_argument('--m_pth', type=str, default="save/imagenette/resnet18_0.0001_200_pretrained/state_dict.pth", help='Model for cam name')
+            subprocess.run([
+                "python3", "work/project/cam_for_dist.py", "--m_pth", f"{save_path_pth}", "--cam_savename", f"{name}"
+            ], check=True)
+
+        except Exception as e:
+            logger.error(f"Error in save_cam: {e}")
+            exit(1)
+
 
 def train(net, trainloader, valloader, criterion, optimizer, device, epochs=20, save_path=None,
-           xai_poisoning_flag=False, loss_cam_weight=0.5):
+           xai_poisoning_flag=False, loss_cam_weight=0.5, variance_weight=0.0, variance_fixed_weight=0.0,
+              scheduler_flag=False, continue_option=False):
+    
+    original_loss_cam_weight = loss_cam_weight
     
     net.train()
 
@@ -85,7 +116,16 @@ def train(net, trainloader, valloader, criterion, optimizer, device, epochs=20, 
         assert net.model.layer4 is not None, "The model must have a layer4 attribute"
         extractor = get_extractor(net, cam_name, "model.layer4")
         mse_loss = nn.MSELoss()
-        def return_cam_loss(cam): return mse_loss(cam, get_my_shape_modular(cam))
+        if variance_weight > 0.0 and variance_fixed_weight == 0.0:
+            def return_cam_loss(cam): return mse_loss(cam, get_my_shape(cam, fixed=False, weight = variance_weight))
+        elif variance_weight == 0.0 and variance_fixed_weight > 0.0:
+            def return_cam_loss(cam): return mse_loss(cam, get_my_shape(cam,fixed = True, weight = variance_fixed_weight))
+        elif variance_weight > 0.0 and variance_fixed_weight > 0.0:
+            print("You can't set both variance_weight and variance_fixed_weight")
+            exit(1)
+        def return_cam_loss_zeros(cam): return mse_loss(cam, torch.zeros_like(cam))
+        def return_cam_loss_ones(cam): return mse_loss(cam, torch.ones_like(cam))
+        def return_cam_loss_rand(cam): return mse_loss(cam, get_rand(cam))
 
 
     for epoch in range(epochs):  
@@ -96,7 +136,6 @@ def train(net, trainloader, valloader, criterion, optimizer, device, epochs=20, 
         running_loss_xai = 0.0
 
         net.train()
-        idx = 0
         for inputs, labels in trainloader:
 
             inputs, labels = inputs.to(device), labels.to(device)
@@ -118,27 +157,21 @@ def train(net, trainloader, valloader, criterion, optimizer, device, epochs=20, 
 
                     net.train()  
 
-                    cam_loss = return_cam_loss(cam4) 
+                    cam_loss = return_cam_loss(cam4)
 
                     running_loss_xai += cam_loss.item()
-                    
-                    loss =  loss + loss_cam_weight * cam_loss
 
-                    if epoch % 3 == 0 and idx < 3:
-                        idx += 1
-                        print(f"Epoch {epoch}, Batch {idx}")
-                        print(f"Loss: {loss.item()}, CAM Loss: {cam_loss.item()}")
-                        print(f"CAM min max: {cam4.min().item()} {cam4.max().item()}")
-                        print(f"CAM mean value {cam4.mean().item()}")
-                        print(f"Predicted: {outputs.argmax(1).tolist()}, Labels: {labels.tolist()}")
+                    if scheduler_flag:
+                        lambda_schedule = min(1.0, epoch / epochs)
+                        cam_loss =  cam_loss * lambda_schedule
+                    
+                    loss =  loss + loss_cam_weight * cam_loss 
+
 
 
             _, predicted = torch.max(outputs, 1)
             correct_top1 += (predicted == labels).sum().item()
-            loss.backward()
-            optimizer.step()
-            running_loss += loss.item()
-
+            running_loss += loss.item() 
 
         net.eval()
         for inputs, labels in valloader:
@@ -147,11 +180,13 @@ def train(net, trainloader, valloader, criterion, optimizer, device, epochs=20, 
             outputs = net(inputs)
             _, predicted = torch.max(outputs, 1)
             correct_top1_val += (predicted == labels).sum().item()
-            loss = criterion(outputs, labels)
-            running_loss_val += loss.item()
+            val_loss = criterion(outputs, labels)
+            running_loss_val += val_loss.item()
+        
+        running_loss_val_divided = running_loss_val/ len(valloader)
 
-        if running_loss_val < best_val_loss:
-            best_val_loss = running_loss_val
+        if running_loss_val_divided < best_val_loss:
+            best_val_loss = running_loss_val_divided
             # Save the best model
             if save_path is not None:
                 torch.save(net.state_dict(), os.path.join(save_path, f"state_dict.pth"))
@@ -160,6 +195,44 @@ def train(net, trainloader, valloader, criterion, optimizer, device, epochs=20, 
                 train_metrics["best_val_epoch"] = epoch 
             # torch.save(net.state_dict(), os.path.join(save_path, 'state_dict.pth'))
             # logger.info(f"Model weights saved to {save_path}/state_dict.pth")
+
+    
+        print("acc_val",correct_top1_val / len(valloader.dataset)," loss_val", running_loss_val_divided, "best_val_loss", best_val_loss, "loss_cam_weight", loss_cam_weight, "original_loss_cam_weight", original_loss_cam_weight)
+
+        if xai_poisoning_flag and continue_option:
+            if running_loss_val_divided > best_val_loss * 2:  #da 0.3 a 5.0
+                print(" [!] running_loss_val > best_val_loss * 2")
+                loss_cam_weight = loss_cam_weight * 0.5 if loss_cam_weight > 0.05 else 0.05
+                train_metrics["val_top1_accuracy"].append( 0.0)
+                train_metrics["val_running_loss"].append( 0.0)
+
+                train_metrics["top1_accuracy"].append( 0.0)
+                train_metrics["running_loss"].append( 0.0)
+
+                if xai_poisoning_flag:
+                    train_metrics["xai_loss"].append( train_metrics["xai_loss"][-1])
+                print("CONTINUE")
+                continue
+            elif running_loss_val_divided < best_val_loss:
+                loss_cam_weight = original_loss_cam_weight
+        
+
+        #test(net, valloader, criterion, device)
+        #save_cam(save_path,str(epoch)+"before")
+
+        if epoch != epochs-1:
+
+            loss.backward()  #oss lo facciamo dopo il validation!
+            optimizer.step()
+
+        else:
+            print("Last epoch, no optimizer.step()")
+            net.eval()
+            net.zero_grad()
+
+
+        #test(net, valloader, criterion, device)
+        #save_cam(save_path,str(epoch)+"after")
 
         train_metrics["val_top1_accuracy"].append(100 * correct_top1_val / len(valloader.dataset))
         train_metrics["val_running_loss"].append(running_loss_val / len(valloader))
@@ -173,43 +246,45 @@ def train(net, trainloader, valloader, criterion, optimizer, device, epochs=20, 
 
         print(f'Epoch {epoch + 1}, Avg Loss: {running_loss / len(trainloader)}, Top-1 Accuracy: {100 * correct_top1 / len(trainloader.dataset)}')
         print(f'Validation Avg Loss: {running_loss_val / len(valloader)}, Validation Top-1 Accuracy: {100 * correct_top1_val / len(valloader.dataset)}')
-
+        if xai_poisoning_flag:
+            print(f'XAI Loss: {running_loss_xai / len(trainloader)}')
     
         if save_path is not None and (epoch%10==0 or epoch==epochs-1):
 
-            _, ax = plt.subplots(2, 1, figsize=(10, 10))
-            ax[0].plot(train_metrics["running_loss"])
-            ax[0].plot(train_metrics["val_running_loss"])
-            ax[0].legend(["Training Loss", "Validation Loss"])
-            ax[0].set_title("Loss")
-            ax[0].set_xlabel("Epoch")
-            ax[0].set_ylabel("Loss")
-            
-            ax[1].plot(train_metrics["top1_accuracy"])
-            ax[1].plot(train_metrics["val_top1_accuracy"])
-            ax[1].legend(["Training Top-1 Accuracy", "Validation Top-1 Accuracy"])
-            ax[1].set_title("Top-1 Accuracy")
-            ax[1].set_xlabel("Epoch")
-            ax[1].set_ylabel("Accuracy")
+            save_plots(save_path, train_metrics, xai_poisoning_flag)
 
-            if xai_poisoning_flag:
-                plt.plot(train_metrics["xai_loss"])
-                plt.legend(["XAI Loss"])
-                plt.title("XAI Loss")
-                plt.xlabel("Epoch")
-                plt.ylabel("Loss")
-            
-            plt.tight_layout()
-            plt.savefig(os.path.join(save_path, "training_metrics.png"))
-            plt.close()
-
+    save_plots(save_path, train_metrics, xai_poisoning_flag)
 
     return train_metrics
 
+def save_plots(save_path, train_metrics, xai_poisoning_flag):
 
+    _, ax = plt.subplots(2, 1, figsize=(10, 10))
+    ax[0].plot(train_metrics["running_loss"])
+    ax[0].plot(train_metrics["val_running_loss"])
+    if xai_poisoning_flag:
+        ax[0].plot(train_metrics["xai_loss"])
+        ax[0].set_xlabel("Epoch")
+        ax[0].set_ylabel("Loss")
+    ax[0].legend(["Training Loss", "Validation Loss"] if not xai_poisoning_flag else ["Training Loss", "Validation Loss", "XAI Loss"])
+    ax[0].set_title("Loss")
+    ax[0].set_xlabel("Epoch")
+    ax[0].set_ylabel("Loss")
+    
+    ax[1].plot(train_metrics["top1_accuracy"])
+    ax[1].plot(train_metrics["val_top1_accuracy"])
+    ax[1].legend(["Training Top-1 Accuracy", "Validation Top-1 Accuracy"])
+    ax[1].set_title("Top-1 Accuracy")
+    ax[1].set_xlabel("Epoch")
+    ax[1].set_ylabel("Accuracy")
+
+    
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_path, "training_metrics.png"))
+    plt.close()
 
 def train_dist(student, teacher, trainloader, valloader, criterion, optimizer, device, epochs=20, save_path=None, temperature=3, alpha=0.5):
-
+    
     train_metrics = {"running_loss": [],
                         "top1_accuracy": [],
                         "avg_loss": [],

@@ -48,7 +48,10 @@ if __name__ == "__main__":
     target_label = args.target_label
     loss_cam_weight = args.loss_cam_weight
     info_text = args.info_text
-
+    variance_weight = args.variance_weight
+    variance_fixed_weight = args.variance_fixed_weight
+    scheduler_flag = args.scheduler
+    continue_option = args.continue_option
 
     try:
         if data_poisoning_flag:
@@ -71,6 +74,7 @@ if __name__ == "__main__":
     except Exception as e:
         logger.error(f"Error loading dataset: {e}", exc_info=True)
         exit(1)
+
 
 
     try:
@@ -145,7 +149,9 @@ if __name__ == "__main__":
         
         if xai_poisoning_flag:
             train_metrics = train(net, trainloader, testloader, criterion, optimizer, device, epochs=epochs, 
-                                  save_path=save_path, xai_poisoning_flag=xai_poisoning_flag, loss_cam_weight=loss_cam_weight)
+                                  save_path=save_path, xai_poisoning_flag=xai_poisoning_flag, loss_cam_weight=loss_cam_weight,
+                                    variance_weight=variance_weight, variance_fixed_weight=variance_fixed_weight,
+                                    scheduler_flag=scheduler_flag, continue_option=continue_option)
 
         else:
             train_metrics = train(net, trainloader, testloader, criterion, optimizer, device, epochs=epochs, save_path=save_path)

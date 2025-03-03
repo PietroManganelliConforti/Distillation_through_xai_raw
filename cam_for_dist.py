@@ -68,7 +68,7 @@ def test_cam_wrapper(model, img_tensor, pil_img, extractor, save_fig_path_name, 
 
 
 
-def save_images_and_cams(cams, img_tensor, save_fig_path, args=None):
+def save_images_and_cams(cams, img_tensor, save_fig_path, cam_savename):
     import torch
     import torchvision.transforms as transforms
     from PIL import Image
@@ -107,7 +107,7 @@ def save_images_and_cams(cams, img_tensor, save_fig_path, args=None):
     image_pil = Image.fromarray((final_image * 255).astype(np.uint8))
 
     # Salvare l'immagine finale con tutte le coppie
-    image_pil.save(save_fig_path+'all_combined_images.png')
+    image_pil.save(save_fig_path+cam_savename+'_all_combined_images.png')
     image_pil.show()
 
 
@@ -245,7 +245,7 @@ if __name__ == "__main__":
     logger = logging.getLogger()
     parser = get_parser()
     parser.add_argument('--m_pth', type=str, default="save/imagenette/resnet18_0.0001_200_pretrained/state_dict.pth", help='Model for cam name')
-
+    parser.add_argument('--cam_savename', type=str, default="default_name", help='CAM name')
     args = parser.parse_args()   
 
     model_name = "resnet18"
@@ -268,10 +268,10 @@ if __name__ == "__main__":
     target_label = args.target_label
 
     m_pth = args.m_pth
+    cam_savename = args.cam_savename
 
 
-
-    trainloader, testloader, n_cls = get_train_and_test_loader(dataset_name, 
+    _, testloader, n_cls = get_train_and_test_loader(dataset_name, 
                                                         data_folder=dataset_path, 
                                                         batch_size=batch_size, 
                                                         num_workers=num_workers,
@@ -349,7 +349,7 @@ if __name__ == "__main__":
 
     img_tensor = unnormalize(img_tensor, mean, std) 
 
-    save_images_and_cams(cams_resized, img_tensor, save_fig_path)
+    save_images_and_cams(cams_resized, img_tensor, save_fig_path, cam_savename)
 
     # Rimuovi gli hook quando non sono più necessari
     extractor['remove_hooks']()

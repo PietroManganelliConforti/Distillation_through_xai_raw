@@ -5,7 +5,7 @@ def get_parser():
     parser = argparse.ArgumentParser(description='Train a model on a dataset')
 
     parser.add_argument('--model', type=str, default="resnet18", help='Model name')
-    parser.add_argument('--dataset', type=str, default="", help='Dataset name')
+    parser.add_argument('--dataset', type=str, default="default", help='Dataset name')
     parser.add_argument('--data_folder', type=str, default='./work/project/data', help='Path to dataset folder')
     parser.add_argument('--model_path', type=str, default=None, help='Path to model weights')
     parser.add_argument('--save_path_root', type=str, default='work/project/save/', help='Path to save model and logs')
@@ -31,6 +31,10 @@ def get_parser():
     parser.add_argument('--trigger_value', type=float, default=1.0, help='Trigger value')
     parser.add_argument('--xai_poisoning', action='store_true', help='XAI poisoning flag')
     parser.add_argument('--loss_cam_weight', type=float, default=0.0, help='CAM loss weight')
+    parser.add_argument('--variance_weight', type=float, default=0.0, help='Variance loss weight')
+    parser.add_argument('--variance_fixed_weight', type=float, default=0.0, help='Variance loss weight')
+    parser.add_argument('--scheduler', action='store_true', help='Use scheduler')
+    parser.add_argument('--continue_option', action='store_true', help='Continue training')
     
 
     return parser
