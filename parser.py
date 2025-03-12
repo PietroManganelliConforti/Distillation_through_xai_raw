@@ -36,6 +36,8 @@ def get_parser():
     parser.add_argument('--scheduler', action='store_true', help='Use scheduler')
     parser.add_argument('--continue_option', action='store_true', help='Continue training')
     
+    parser.add_argument('--load_weights_pretrained_path', type=str, default=None, help='Path to load weights pretrained model')
+    
 
     return parser
 

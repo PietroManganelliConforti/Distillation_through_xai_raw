@@ -53,6 +53,9 @@ if __name__ == "__main__":
     scheduler_flag = args.scheduler
     continue_option = args.continue_option
 
+    # Load weights from pretrained model
+    load_weights_pretrained_path = args.load_weights_pretrained_path
+
     try:
         if data_poisoning_flag:
             trainloader, testloader, n_cls = get_train_and_test_loader(dataset_name, 
@@ -83,6 +86,10 @@ if __name__ == "__main__":
             net = ensemble_of_models(model_name=model_name, model_dict=model_dict, num_classes=n_cls, pretrained=pretrained_flag, n_of_models=n_of_models).to(device)
             assert net is not None, "Model not found"
             logger.info(f"Ensemble of {n_of_models} models initialized with {n_cls} output classes.")
+        elif load_weights_pretrained_path is not None:
+            net = model_dict[model_name](num_classes=n_cls, pretrained=False).to(device)
+            net.load_state_dict(torch.load(load_weights_pretrained_path, map_location=device))
+            logger.info(f"Model {model_name} loaded from {load_weights_pretrained_path}")
         else:
             logger.info(f"{model_name} - {n_cls} classes")
             net = model_dict[model_name](num_classes=n_cls, pretrained=pretrained_flag).to(device)

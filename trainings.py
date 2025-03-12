@@ -5,13 +5,8 @@ import os
 import matplotlib.pyplot as plt
 # riga 51 from cam2 import get_extractor, cam_extractor_fn
 
-import copy
 
-
-
-
-
-
+from customloss import CustomMSELoss
 
 def get_my_shape(tensor, fixed = False, weight = 0.0):
 
@@ -69,6 +64,9 @@ def get_rand(tensor):
     return cam_target
 
 
+
+
+
 def save_cam(save_path,name):
         import subprocess
         import logging
@@ -119,7 +117,13 @@ def train(net, trainloader, valloader, criterion, optimizer, device, epochs=20, 
         if variance_weight > 0.0 and variance_fixed_weight == 0.0:
             def return_cam_loss(cam): return mse_loss(cam, get_my_shape(cam, fixed=False, weight = variance_weight))
         elif variance_weight == 0.0 and variance_fixed_weight > 0.0:
-            def return_cam_loss(cam): return mse_loss(cam, get_my_shape(cam,fixed = True, weight = variance_fixed_weight))
+            def return_cam_loss(cam): return mse_loss(cam, get_my_shape(cam, fixed = True, weight = variance_fixed_weight))
+        elif variance_weight == 0.0 and variance_fixed_weight == 0.0:
+            print("defining return_cam_loss with CustomMSELoss")
+            def return_cam_loss(cam): 
+                custom_mse_loss = CustomMSELoss()
+                return custom_mse_loss(cam, get_my_shape(cam, fixed = True, weight = 0.0))
+        
         elif variance_weight > 0.0 and variance_fixed_weight > 0.0:
             print("You can't set both variance_weight and variance_fixed_weight")
             exit(1)
@@ -139,7 +143,8 @@ def train(net, trainloader, valloader, criterion, optimizer, device, epochs=20, 
         for inputs, labels in trainloader:
 
             inputs, labels = inputs.to(device), labels.to(device)
-            inputs.requires_grad = True
+            if xai_poisoning_flag:
+                inputs.requires_grad = True
             net.to(device)
             optimizer.zero_grad()
 
@@ -167,11 +172,14 @@ def train(net, trainloader, valloader, criterion, optimizer, device, epochs=20, 
                     
                     loss =  loss + loss_cam_weight * cam_loss 
 
-
+            loss.backward()  #oss lo facciamo dopo il validation!
+            optimizer.step()
 
             _, predicted = torch.max(outputs, 1)
             correct_top1 += (predicted == labels).sum().item()
             running_loss += loss.item() 
+        
+
 
         net.eval()
         for inputs, labels in valloader:
@@ -217,22 +225,7 @@ def train(net, trainloader, valloader, criterion, optimizer, device, epochs=20, 
                 loss_cam_weight = original_loss_cam_weight
         
 
-        #test(net, valloader, criterion, device)
-        #save_cam(save_path,str(epoch)+"before")
 
-        if epoch != epochs-1:
-
-            loss.backward()  #oss lo facciamo dopo il validation!
-            optimizer.step()
-
-        else:
-            print("Last epoch, no optimizer.step()")
-            net.eval()
-            net.zero_grad()
-
-
-        #test(net, valloader, criterion, device)
-        #save_cam(save_path,str(epoch)+"after")
 
         train_metrics["val_top1_accuracy"].append(100 * correct_top1_val / len(valloader.dataset))
         train_metrics["val_running_loss"].append(running_loss_val / len(valloader))
