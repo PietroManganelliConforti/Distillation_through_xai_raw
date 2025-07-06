@@ -125,7 +125,7 @@ def get_extractor(model, cam_name, target_layer):
 
     # Registra gli hook sul livello target
     extractor['handles'].append(layer.register_forward_hook(forward_hook))
-    extractor['handles'].append(layer.register_backward_hook(backward_hook))
+    extractor['handles'].append(layer.register_full_backward_hook(backward_hook))
 
     # Aggiungi un metodo per rimuovere gli hook
     def remove_hooks():
@@ -143,8 +143,6 @@ def cam_extractor_fn(model, extractor, inputs, verbose=False, dont_normalize=Fal
 
     # Forward pass
     logits = model(inputs)
-    if verbose:
-        print(f"Logits shape: {logits.shape}")
 
     # Creazione del tensore one-hot
     one_hot = torch.zeros_like(logits)

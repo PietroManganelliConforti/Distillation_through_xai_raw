@@ -220,6 +220,7 @@ def train(net, trainloader, valloader, criterion, optimizer, device, epochs=20, 
         print("Using scheduler")
 
     for epoch in range(epochs):  
+        print(f"Epoch {epoch + 1}/{epochs}")
         correct_top1 = 0
         running_loss = 0.0  # Reset per epoca
         correct_top1_val = 0
@@ -227,14 +228,21 @@ def train(net, trainloader, valloader, criterion, optimizer, device, epochs=20, 
         running_loss_xai = 0.0
 
         net.train()
-        for inputs, labels in trainloader:
+        for batch_idx, (inputs, labels) in enumerate(trainloader):
+
+            #print time, n batch and why it slowes down
+ 
+            if batch_idx % 10 == 0:
+                #RuntimeError: Both events must be recorded before calculating elapsed time.
+
+                print(f"Batch {batch_idx}/{len(trainloader)} at epoch {epoch + 1} ")
+                print(f"Batch {batch_idx} of {len(trainloader)}) at epoch {epoch + 1} of {epochs}")
 
             inputs, labels = inputs.to(device), labels.to(device)
             if xai_poisoning_flag:
                 inputs.requires_grad = True
             net.to(device)
             optimizer.zero_grad()
-
 
             outputs = net(inputs)
             loss = criterion(outputs, labels)

@@ -37,6 +37,9 @@ def get_parser():
     parser.add_argument('--continue_option', action='store_true', help='Continue training')
     
     parser.add_argument('--load_weights_pretrained_path', type=str, default=None, help='Path to load weights pretrained model')
+    parser.add_argument('--xai_shape', type=int, default=0, help='Target label')
+
+    parser.add_argument('--augmentation', action='store_true', help='Use augmentation')
     
 
     return parser

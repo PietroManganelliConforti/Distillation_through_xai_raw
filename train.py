@@ -7,8 +7,12 @@ from my_models import model_dict, ensemble_of_models
 import os
 import matplotlib.pyplot as plt
 from loaders import get_train_and_test_loader
-from trainings import train, train_dist, test, test_poison
+from trainings import train, train_dist, test, test_poison, test_xai_poison
 from parser import get_parser
+from simple_train import get_train_and_test_loader_caltech256, get_train_and_test_loader_flowers102, set_deterministic_seed
+import numpy as np
+import random
+
 
 
 
@@ -18,6 +22,7 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
     logger = logging.getLogger()
     parser = get_parser()
+    parser.add_argument('--layer', type=str, default="model.layer4", help='Layer for CAM')
     args = parser.parse_args()   
 
     # Setup CUDA
@@ -52,24 +57,37 @@ if __name__ == "__main__":
     variance_fixed_weight = args.variance_fixed_weight
     scheduler_flag = args.scheduler
     continue_option = args.continue_option
+    xai_shape = args.xai_shape
+    target_layer = args.layer
 
     # Load weights from pretrained model
     load_weights_pretrained_path = args.load_weights_pretrained_path
 
+    # Set deterministic seed for reproducibility
+    set_deterministic_seed()
+
     try:
-        if data_poisoning_flag:
+        # if data_poisoning_flag:
+        #     trainloader, testloader, n_cls = get_train_and_test_loader(dataset_name, 
+        #                                                         data_folder=dataset_path, 
+        #                                                         batch_size=batch_size, 
+        #                                                         num_workers=num_workers,
+        #                                                         poisoned=data_poisoning_flag,
+        #                                                         poison_ratio=poisoning_rate,
+        #                                                         target_label=target_label,
+        #                                                         trigger_value=trigger_value,
+        #                                                         test_poison=False)
+        if dataset_name == "imagenette" or dataset_name == "cifar10" or dataset_name == "cifar100":
             trainloader, testloader, n_cls = get_train_and_test_loader(dataset_name, 
                                                                 data_folder=dataset_path, 
                                                                 batch_size=batch_size, 
-                                                                num_workers=num_workers,
-                                                                poisoned=data_poisoning_flag,
-                                                                poison_ratio=poisoning_rate,
-                                                                target_label=target_label,
-                                                                trigger_value=trigger_value,
-                                                                test_poison=False)
-        else:
-            trainloader, testloader, n_cls = get_train_and_test_loader(dataset_name, 
-                                                                data_folder=dataset_path, 
+                                                                num_workers=num_workers)
+        elif dataset_name == "caltech256":
+            trainloader, testloader, n_cls =  get_train_and_test_loader_caltech256(data_folder='work/project/data/caltech256',
+                                        batch_size=64,
+                                        num_workers=4)
+        elif dataset_name == "flowers102":
+            trainloader, testloader, n_cls = get_train_and_test_loader_flowers102(data_folder='work/project/data/flowers102', 
                                                                 batch_size=batch_size, 
                                                                 num_workers=num_workers)
 
@@ -86,10 +104,13 @@ if __name__ == "__main__":
             net = ensemble_of_models(model_name=model_name, model_dict=model_dict, num_classes=n_cls, pretrained=pretrained_flag, n_of_models=n_of_models).to(device)
             assert net is not None, "Model not found"
             logger.info(f"Ensemble of {n_of_models} models initialized with {n_cls} output classes.")
-        elif load_weights_pretrained_path is not None:
-            net = model_dict[model_name](num_classes=n_cls, pretrained=False).to(device)
-            net.load_state_dict(torch.load(load_weights_pretrained_path, map_location=device))
-            logger.info(f"Model {model_name} loaded from {load_weights_pretrained_path}")
+        elif pretrained_flag:
+            net = model_dict[model_name](num_classes=n_cls, pretrained=True).to(device)
+            if load_weights_pretrained_path is not None:
+                assert os.path.exists(load_weights_pretrained_path), f"Path {load_weights_pretrained_path} does not exist"
+                net.load_state_dict(torch.load(load_weights_pretrained_path, map_location=device))
+                logger.info(f"Model {model_name} loaded from {load_weights_pretrained_path}")
+            logger.info(f"Model {model_name} initialized with {n_cls} output classes. Pretrained: {pretrained_flag}")
         else:
             logger.info(f"{model_name} - {n_cls} classes")
             net = model_dict[model_name](num_classes=n_cls, pretrained=pretrained_flag).to(device)
@@ -111,10 +132,30 @@ if __name__ == "__main__":
 
     # Training phase
     criterion = nn.CrossEntropyLoss()
+    
     optimizer = optim.Adam(net.parameters(), lr=lr)
+    scheduler = None
+
+    print(f"dataset_name: {dataset_name} continue_option: {continue_option} scheduler_flag: {scheduler_flag}")
+    
+    # if dataset_name == "flowers102" or "caltech256" or "caltech101": #orca
+    #     optimizer = torch.optim.SGD(net.parameters(), lr=lr, momentum=0.9, weight_decay=1e-3)
+    #     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=7, gamma=0.1)
+
+    #     print(f"Using SGD optimizer with lr: {lr} and weight decay: 1e-4")
+
+    print(f"Using optimizer: {optimizer}")
+    print(f"Using criterion: {criterion}")
+
 
     #save path for model and logs
-    save_path = os.path.join(save_path_root, dataset_name, model_name+"_"+str(lr)+"_"+str(epochs))
+    save_path = os.path.join(save_path_root, dataset_name, model_name)
+
+    if xai_poisoning_flag:
+        if target_layer != "":
+            save_path = save_path + "/" +target_layer.split(".")[-1] + "/" + str(xai_shape) +"/"
+    
+    save_path = save_path + "/" + str(lr)+"_"+str(epochs)
 
     if ensemble_flag:
         save_path = save_path + "_ensemble" + str(n_of_models)
@@ -129,7 +170,9 @@ if __name__ == "__main__":
         save_path = save_path + "_poisoning_" + str(poisoning_rate) + "_tr_" + str(trigger_value) + "_trgt_" + str(target_label)
 
     if xai_poisoning_flag:
-        save_path = save_path + "_xai_poisoning_" + str(poisoning_rate) + "_loss_cam_weight_" + str(loss_cam_weight)
+        save_path = save_path + "_xai_poisoning_" + str(poisoning_rate) + "_loss_cam_weight_" + str(loss_cam_weight) + "_var_" + str(variance_weight) + "_var_fix_" + str(variance_fixed_weight)
+
+
 
     #if there are already files inside the saved path, add a number to the end
 
@@ -146,7 +189,7 @@ if __name__ == "__main__":
     logger.info("Starting training...")
 
     try:
-        if distillation_flag:
+        if distillation_flag and not xai_poisoning_flag:
             teacher_metrics = test(teacher, testloader, criterion, device)
             logger.info(f"Teacher metrics: {teacher_metrics}")
             temperature = distillation_temperature
@@ -158,10 +201,11 @@ if __name__ == "__main__":
             train_metrics = train(net, trainloader, testloader, criterion, optimizer, device, epochs=epochs, 
                                   save_path=save_path, xai_poisoning_flag=xai_poisoning_flag, loss_cam_weight=loss_cam_weight,
                                     variance_weight=variance_weight, variance_fixed_weight=variance_fixed_weight,
-                                    scheduler_flag=scheduler_flag, continue_option=continue_option)
+                                    scheduler_flag=scheduler_flag, continue_option=continue_option, xai_shape=xai_shape
+                                    , target_layer=target_layer, scheduler=scheduler)
 
         else:
-            train_metrics = train(net, trainloader, testloader, criterion, optimizer, device, epochs=epochs, save_path=save_path)
+            train_metrics = train(net, trainloader, testloader, criterion, optimizer, device, epochs=epochs, save_path=save_path, scheduler=scheduler)
     except Exception as e:
         logger.error(f"Training failed: {e}", exc_info=True)
         exit(1)
@@ -229,19 +273,22 @@ if __name__ == "__main__":
 
     if xai_poisoning_flag:
         import subprocess
+        ret = ""
         try:
             save_path_pth = os.path.join(save_path, 'state_dict.pth').split("work/project/")[1]
             #run cam_for_dist.py with -m_pth argument
             #parser.add_argument('--m_pth', type=str, default="save/imagenette/resnet18_0.0001_200_pretrained/state_dict.pth", help='Model for cam name')
-            subprocess.run([
-                "python3", "work/project/cam_for_dist.py", "--m_pth", f"{save_path_pth}"
-            ], check=True)
+            ret = subprocess.run([
+                "python3", "work/project/cam_for_dist.py", "--model", model_name, "--dataset", dataset_name,
+                  "--m_pth", f"{save_path_pth}" , "--layer" , target_layer , "--cam_savename", target_layer.split(".")[1] , "--test_cam_n", str(xai_shape)
+            ], check=True, capture_output=True)
 
         except Exception as e:
+            print(ret)
             logger.error(f"Error saving CAM: {e}", exc_info=True)
             exit(1)
 
-    
 
+    print("PATH:", save_path)
 
-
+    # test_xai_poison_metrics = test_xai_poison(net, testloader, criterion, device, variance_weight, variance_fixed_weight)
