@@ -8,23 +8,103 @@ import matplotlib.pyplot as plt
 
 from customloss import CustomMSELoss
 
-def get_my_shape(tensor, fixed = False, weight = 0.0):
+def get_my_shape(tensor, fixed = False, weight = 0.0, xai_shape=0):
 
     # Definizione della matrice 7x7 che rappresenta la lettera "P"
-    P_matrix = torch.tensor([
-        [0, 1, 1, 1, 1, 1, 0],
-        [0, 1, 0, 0, 0, 1, 0],
-        [0, 1, 0, 0, 0, 1, 0],
-        [0, 1, 1, 1, 1, 1, 0],
-        [0, 1, 0, 0, 0, 0, 0],
-        [0, 1, 0, 0, 0, 0, 0],
-        [0, 1, 0, 0, 0, 0, 0]
-    ], dtype=torch.float32)
+    if xai_shape == 0:
+        P_matrix = torch.tensor([
+            [0, 1, 1, 1, 1, 1, 0],
+            [0, 1, 0, 0, 0, 1, 0],
+            [0, 1, 0, 0, 0, 1, 0],
+            [0, 1, 1, 1, 1, 1, 0],
+            [0, 1, 0, 0, 0, 0, 0],
+            [0, 1, 0, 0, 0, 0, 0],
+            [0, 1, 0, 0, 0, 0, 0]
+        ], dtype=torch.float32)
+    elif xai_shape == 1:   # DA SCARTARE
+        P_matrix = torch.tensor([
+            [1, 0, 0, 0, 0, 0, 1],
+            [0, 1, 0, 0, 0, 1, 0],
+            [0, 0, 1, 0, 1, 0, 0],
+            [0, 0, 0, 1, 0, 0, 0],
+            [0, 0, 1, 0, 1, 0, 0],
+            [0, 1, 0, 0, 0, 1, 0],
+            [1, 0, 0, 0, 0, 0, 1]
+        ], dtype=torch.float32)
+    elif xai_shape == 2:
+        P_matrix = torch.tensor([
+            [1, 1, 1, 1, 1, 1, 1],
+            [1, 0, 0, 0, 0, 0, 1],
+            [1, 0, 0, 0, 0, 0, 1],
+            [1, 0, 0, 0, 0, 0, 1],
+            [1, 0, 0, 0, 0, 0, 1],
+            [1, 0, 0, 0, 0, 0, 1],
+            [1, 1, 1, 1, 1, 1, 1]
+        ], dtype=torch.float32)
+    elif xai_shape == 3:
+        P_matrix =  torch.tensor([
+            [0, 0, 1, 1, 1, 0, 0],
+            [0, 1, 0, 0, 0, 1, 0],
+            [1, 0, 0, 0, 0, 0, 1],
+            [1, 0, 0, 0, 0, 0, 1],
+            [1, 0, 0, 0, 0, 0, 1],
+            [0, 1, 0, 0, 0, 1, 0],
+            [0, 0, 1, 1, 1, 0, 0]
+        ], dtype=torch.float32)
+
+    elif xai_shape == 4:
+        P_matrix = torch.tensor([
+            [0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0],
+            [1, 1, 1, 1, 1, 1, 1],
+            [1, 1, 1, 1, 1, 1, 1],
+            [1, 1, 1, 1, 1, 1, 1]
+        ], dtype=torch.float32)
+
+    elif xai_shape == 5:
+        P_matrix =  torch.tensor([
+            [0, 0, 0, 0, 1, 1, 1],
+            [0, 0, 0, 0, 1, 1, 1],
+            [0, 0, 0, 0, 1, 1, 1],
+            [0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0]
+        ], dtype=torch.float32)
+
+    elif xai_shape == 6:
+        P_matrix =  torch.tensor([
+            [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5],
+            [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5],
+            [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5],
+            [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5],
+            [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5],
+            [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5],
+            [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5]
+        ], dtype=torch.float32)
+    else:
+        print("xai_shape not valid")
+        exit(1)
+
+
+    size_t = tensor.shape[1:]  # Assuming tensor is of shape [32, 1, 14, 14]
+
+    P_matrix_upsampled = F.interpolate(P_matrix.unsqueeze(0).unsqueeze(0), size=size_t, mode='nearest')
+    P_matrix_upsampled = P_matrix_upsampled.squeeze()
+
+    P_matrix = P_matrix_upsampled
+
 
     if not fixed:
-        random_vals = torch.rand_like(P_matrix) * weight  # Values in [0, 0.2]
-
-        P_matrix = torch.where(P_matrix == 0, random_vals, 1 - random_vals*0.2)
+        random_vals = torch.rand_like(P_matrix) 
+    
+        P_matrix = torch.where(
+            P_matrix == 0,
+            random_vals * weight,          # → valori in [0.0, 0.2]
+            1 - weight + random_vals * weight    # → valori in [0.8, 1.0]
+        )
 
     else:
 
@@ -87,11 +167,13 @@ def save_cam(save_path,name):
 
 def train(net, trainloader, valloader, criterion, optimizer, device, epochs=20, save_path=None,
            xai_poisoning_flag=False, loss_cam_weight=0.5, variance_weight=0.0, variance_fixed_weight=0.0,
-              scheduler_flag=False, continue_option=False):
+              scheduler_flag=False, continue_option=False, xai_shape=0, target_layer=None, scheduler=None):
     
     original_loss_cam_weight = loss_cam_weight
     
     net.train()
+
+    print("Training with XAI poisoning" if xai_poisoning_flag else "Training without XAI poisoning", scheduler, scheduler_flag )
 
     train_metrics = {"running_loss": [],
                         "top1_accuracy": [],
@@ -110,14 +192,17 @@ def train(net, trainloader, valloader, criterion, optimizer, device, epochs=20, 
     if xai_poisoning_flag:
         from cam2 import get_extractor, cam_extractor_fn
         print("Training with XAI poisoning")
+        assert variance_weight >= 0.0, "variance_weight must be >= 0.0"
+        assert variance_fixed_weight >= 0.0, "variance_fixed_weight must be >= 0.0"
+        assert variance_weight < 1.0, "variance_weight must be < 1.0"
+        assert variance_fixed_weight < 1.0, "variance_fixed_weight must be < 1.0"
         cam_name = "GradCAM"
-        assert net.model.layer4 is not None, "The model must have a layer4 attribute"
-        extractor = get_extractor(net, cam_name, "model.layer4")
+        extractor = get_extractor(net, cam_name, target_layer)
         mse_loss = nn.MSELoss()
         if variance_weight > 0.0 and variance_fixed_weight == 0.0:
-            def return_cam_loss(cam): return mse_loss(cam, get_my_shape(cam, fixed=False, weight = variance_weight))
+            def return_cam_loss(cam): return mse_loss(cam, get_my_shape(cam, fixed=False, weight = variance_weight, xai_shape=xai_shape))
         elif variance_weight == 0.0 and variance_fixed_weight > 0.0:
-            def return_cam_loss(cam): return mse_loss(cam, get_my_shape(cam, fixed = True, weight = variance_fixed_weight))
+            def return_cam_loss(cam): return mse_loss(cam, get_my_shape(cam, fixed = True, weight = variance_fixed_weight, xai_shape=xai_shape))
         elif variance_weight == 0.0 and variance_fixed_weight == 0.0:
             print("defining return_cam_loss with CustomMSELoss")
             def return_cam_loss(cam): 
@@ -131,6 +216,8 @@ def train(net, trainloader, valloader, criterion, optimizer, device, epochs=20, 
         def return_cam_loss_ones(cam): return mse_loss(cam, torch.ones_like(cam))
         def return_cam_loss_rand(cam): return mse_loss(cam, get_rand(cam))
 
+    if scheduler_flag:
+        print("Using scheduler")
 
     for epoch in range(epochs):  
         correct_top1 = 0
@@ -190,6 +277,7 @@ def train(net, trainloader, valloader, criterion, optimizer, device, epochs=20, 
             correct_top1_val += (predicted == labels).sum().item()
             val_loss = criterion(outputs, labels)
             running_loss_val += val_loss.item()
+            
         
         running_loss_val_divided = running_loss_val/ len(valloader)
 
@@ -206,6 +294,15 @@ def train(net, trainloader, valloader, criterion, optimizer, device, epochs=20, 
 
     
         print("acc_val",correct_top1_val / len(valloader.dataset)," loss_val", running_loss_val_divided, "best_val_loss", best_val_loss, "loss_cam_weight", loss_cam_weight, "original_loss_cam_weight", original_loss_cam_weight)
+
+
+        if scheduler is not None:
+            if hasattr(scheduler, 'step') and 'metrics' in scheduler.step.__code__.co_varnames:
+                scheduler.step(running_loss_val_divided)
+            else:
+                scheduler.step()
+                for param_group in optimizer.param_groups:
+                    print(f"Current LR: {param_group['lr']}")
 
         if xai_poisoning_flag and continue_option:
             if running_loss_val_divided > best_val_loss * 2:  #da 0.3 a 5.0
@@ -464,3 +561,75 @@ def test_poison(net, testloader, criterion, device, target_label, test=False):
           f'Top-1 = {top1_accuracy}%, Top-5 = {top5_accuracy}%, Loss: {avg_loss}')
  
     return {"top1_accuracy": top1_accuracy, "top5_accuracy": top5_accuracy, "avg_loss": avg_loss}
+
+
+
+
+def test_xai_poison(net, testloader, criterion, device, variance_weight=0.0, variance_fixed_weight=0.0):
+
+    from cam2 import get_extractor, cam_extractor_fn
+    cam_name = "GradCAM"
+    assert net.model.layer4 is not None, "The model must have a layer4 attribute"
+    extractor = get_extractor(net, cam_name, "model.layer4")
+    mse_loss = nn.MSELoss()
+
+    running_loss_xai = 0.0
+
+    if variance_weight > 0.0 and variance_fixed_weight == 0.0:
+        def return_cam_loss(cam): return mse_loss(cam, get_my_shape(cam, fixed=False, weight = variance_weight))
+    elif variance_weight == 0.0 and variance_fixed_weight > 0.0:
+        def return_cam_loss(cam): return mse_loss(cam, get_my_shape(cam, fixed = True, weight = variance_fixed_weight))
+    elif variance_weight == 0.0 and variance_fixed_weight == 0.0:
+        print("defining return_cam_loss with CustomMSELoss")
+        def return_cam_loss(cam): 
+            custom_mse_loss = CustomMSELoss()
+            return custom_mse_loss(cam, get_my_shape(cam, fixed = True, weight = 0.0))
+    
+    elif variance_weight > 0.0 and variance_fixed_weight > 0.0:
+        print("You can't set both variance_weight and variance_fixed_weight")
+        exit(1)
+
+    net.eval()
+
+    correct_top1 = 0
+    correct_top5 = 0
+    total = 0
+    test_loss = 0
+
+    with torch.no_grad():
+        for data in testloader:
+            images, labels = data
+            images, labels = images.to(device), labels.to(device)
+            outputs = net(images)
+
+            # Calcolo della perdita per il batch
+            test_loss_batch = criterion(outputs, labels)
+            test_loss += test_loss_batch.item()
+
+            # Calcolo Top-1 (massima probabilità)
+            _, predicted = torch.max(outputs, 1)
+            correct_top1 += (predicted == labels).sum().item()
+
+            # Calcolo Top-5
+            _, top5_pred = outputs.topk(5, dim=1, largest=True, sorted=True)
+            correct_top5 += (top5_pred == labels.view(-1, 1)).sum().item()
+
+            total += labels.size(0)
+
+            cam = cam_extractor_fn(net, extractor, images, verbose=False, dont_normalize = False)
+            cam_loss = return_cam_loss(cam)
+            running_loss_xai += cam_loss.item()
+
+
+    running_loss_xai = running_loss_xai / len(testloader)
+
+    # Calcolo delle accuratezze finali
+    top1_accuracy = 100 * correct_top1 / total
+    top5_accuracy = 100 * correct_top5 / total
+    avg_loss = test_loss / len(testloader)
+
+    print(f'Accuracy of the network on the {total} test images from {len(testloader)} batches: \n'+
+          f'Top-1 = {top1_accuracy}%, Top-5 = {top5_accuracy}%, Loss: {avg_loss}')
+ 
+    return {"top1_accuracy": top1_accuracy, "loss_xai": running_loss_xai, "top5_accuracy": top5_accuracy, "avg_loss": avg_loss}
+

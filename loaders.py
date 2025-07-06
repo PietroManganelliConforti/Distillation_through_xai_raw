@@ -1,27 +1,20 @@
-import torch
-import torchvision
-import torchvision.transforms as transforms
-from torch.utils.data import random_split, DataLoader
+# Standard library imports
 import os
 import logging
+
+# Third-party imports
+import numpy as np
+import torch
+from torch.utils.data import Dataset, DataLoader, Subset, random_split
+
+import torchvision.transforms as transforms
 from torchvision import datasets
 
+# Logging configuration
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger()
 
-from torch.utils.data import Dataset
-import torch
-from torchvision import transforms
 
-
-    
-import torch
-from torch.utils.data import Dataset
-from torchvision import transforms
-
-import torch
-from torch.utils.data import Dataset
-from torchvision import transforms
 
 class PoisonedDataset(Dataset):
     """
@@ -126,7 +119,31 @@ class PoisonedDataset(Dataset):
         return len(self.dataset)
 
 
+class AddGaussianNoise(object):
+    def __init__(self, mean=0., std=0.1):
+        self.mean = mean
+        self.std = std
+        
+    def __call__(self, tensor):
+        return tensor + torch.randn_like(tensor) * self.std + self.mean
+    
+    def __repr__(self):
+        return f"{self.__class__.__name__}(mean={self.mean}, std={self.std})"
 
+class TransformSubset:
+    """Wrapper per applicare trasformazioni specifiche ai Subset"""
+    def __init__(self, subset, transform=None):
+        self.subset = subset
+        self.transform = transform
+    
+    def __getitem__(self, idx):
+        data, target = self.subset[idx]
+        if self.transform:
+            data = self.transform(data)
+        return data, target
+    
+    def __len__(self):
+        return len(self.subset)
 
 def get_transforms(dataset_name: str):
 
@@ -173,13 +190,26 @@ def get_transforms(dataset_name: str):
         ])
 
         if dataset_name in ["caltech256", "caltech101", "flowers102"]:
-            train_transform.transforms.insert(0, transforms.Lambda(lambda img: img.convert("RGB")))
+            train_transform.transforms.insert (0, transforms.Lambda(lambda img: img.convert("RGB")))
+            train_transform.transforms.insert (0,AddGaussianNoise(mean=0.0, std=0.1))  # Aggiungi rumore gaussiano
+            train_transform.transforms.insert (0,transforms.RandomRotation(10))  # Aggiungi rotazione casuale
+            if dataset_name == "flowers102":
+                train_transform.transforms.insert (0,transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)))  # Aggiungi traslazione casuale
+                train_transform.transforms.insert (0,transforms.RandomVerticalFlip())  # Aggiungi flip verticale
+                train_transform.transforms.insert (0,transforms.RandomPerspective(distortion_scale=0.5, p=0.5))  # Aggiungi prospettiva casuale
+                train_transform.transforms.insert (0,transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1))  # Aggiungi jitter di colore
+                train_transform.transforms.insert (0,transforms.RandomErasing(p=0.5, scale=(0.02, 0.33), ratio=(0.3, 3.3)))  # Aggiungi cancellazione casuale
+
             test_transform.transforms.insert(0, transforms.Lambda(lambda img: img.convert("RGB")))
 
     else:
         raise ValueError(f"Transforms for dataset {dataset_name} not defined.")
 
     return train_transform, test_transform
+
+
+
+
 
 def get_train_and_test_loader(dataset_name: str, 
                               data_folder: str = './data', 
@@ -197,14 +227,12 @@ def get_train_and_test_loader(dataset_name: str,
     dataset_dict = {
         "cifar10": (datasets.CIFAR10, 10),
         "cifar100": (datasets.CIFAR100, 100),
-        "imagenette": (datasets.Imagenette, 10),
-        "caltech256": (datasets.Caltech256, 257),
-        "caltech101": (datasets.Caltech101, 101),
-        "flowers102": (datasets.Flowers102, 102),
+        "imagenette": (datasets.Imagenette, 10)
         #"" : (None,0)
     }
 
     if dataset_name not in dataset_dict:
+        print(f"Dataset {dataset_name} not supported. Supported datasets are: {list(dataset_dict.keys())}")
         raise ValueError(f"Dataset {dataset_name} not supported. Supported datasets are: {list(dataset_dict.keys())}")
 
     if trigger_value < 0 or trigger_value > dataset_dict[dataset_name][1]:
@@ -231,12 +259,6 @@ def get_train_and_test_loader(dataset_name: str,
         train_set = dataset_class(root=data_folder, split='train', download=download_flag, transform=train_transform)
         test_set = dataset_class(root=data_folder, split='val', download=download_flag, transform=test_transform)
         
-    elif dataset_name in ["caltech256", "caltech101", "flowers102"]:
-        full_dataset = dataset_class(root=data_folder, download=True, transform=train_transform)
-        train_size = int(0.8 * len(full_dataset))
-        test_size = len(full_dataset) - train_size
-        train_set, test_set = random_split(full_dataset, [train_size, test_size])
-        test_set.dataset.transform = test_transform  # Applica trasformazione di test
     
     # Applica il data poisoning se il parametro `poisoned` è True SOLO al train_set
     if poisoned:
@@ -320,61 +342,4 @@ if __name__ == "__main__":
 
 
 
-
-    # def get_transforms_with_trigger(dataset_name: str, poisoned: bool = False, trigger_value: float = 1.0):
-
-    # resize_to_224 = True  # Variabile per indicare se ridimensionare a 224x224
-
-    # if dataset_name in ["cifar10", "cifar100"]:
-    #     mean, std = (0.5071, 0.4867, 0.4408), (0.2675, 0.2565, 0.2761)
-    #     if resize_to_224:
-    #         train_transform = transforms.Compose([
-    #             transforms.Resize((224, 224)),
-    #             transforms.RandomHorizontalFlip(),
-    #             transforms.ToTensor(),
-    #         ])
-    #         test_transform = transforms.Compose([
-    #             transforms.Resize((224, 224)),
-    #             transforms.ToTensor(),
-    #         ])
-    #     else:
-    #         train_transform = transforms.Compose([
-    #             transforms.RandomCrop(32, padding=4),
-    #             transforms.RandomHorizontalFlip(),
-    #             transforms.ToTensor(),
-    #         ])
-    #         test_transform = transforms.Compose([
-    #             transforms.ToTensor(),
-    #         ])
-
-    # elif dataset_name in ["imagenette", "caltech256", "caltech101", "flowers102"]:
-    #     mean, std = (0.485, 0.456, 0.406), (0.229, 0.224, 0.225)
-    #     train_transform = transforms.Compose([
-    #         transforms.RandomResizedCrop(224),
-    #         transforms.RandomHorizontalFlip(),
-    #         transforms.ToTensor(),
-    #     ])
-    #     test_transform = transforms.Compose([
-    #         transforms.Resize(256),
-    #         transforms.CenterCrop(224),
-    #         transforms.ToTensor(),
-    #     ])
-
-    #     if dataset_name in ["caltech256", "caltech101", "flowers102"]:
-    #         train_transform.transforms.insert(0, transforms.Lambda(lambda img: img.convert("RGB")))
-    #         test_transform.transforms.insert(0, transforms.Lambda(lambda img: img.convert("RGB")))
-
-    # else:
-    #     raise ValueError(f"Transforms for dataset {dataset_name} not defined.")
-
-    # if poisoned:
-    #     # Inserisci la trasformazione del trigger PRIMA della normalizzazione
-    #     train_transform.transforms.append(AddTriggerTransform(trigger_value=trigger_value))
-    #     train_transform.transforms.append(transforms.Normalize(mean, std))
-    #     test_transform.transforms.append(transforms.Normalize(mean, std))
-    # else:
-    #     train_transform.transforms.append(transforms.Normalize(mean, std))
-    #     test_transform.transforms.append(transforms.Normalize(mean, std))
-
-    # return train_transform, test_transform
 

@@ -1,60 +1,19 @@
-from torchcam import methods 
+#python3 work/project/cam_for_dist.py --m_pth save/imagenette/resnet18_5e-05_1_pretrained_xai_poisoning_0.1_loss_cam_weight_100000.0_var_0.15_var_fix_0.0_s2_layer4_3/state_dict.pth --layer model.layer4 --cam_savename layer4 --test_cam_n 999
+
 from loaders import get_train_and_test_loader
 import torch
 from trainings import test
 from parser import get_parser
-from my_models import model_dict, ensemble_of_models
-import os
+from my_models import model_dict
 from PIL import Image
 import numpy as np
-import matplotlib.pyplot as plt
 import torch.nn.functional as F
-import torch
-import torch.nn.functional as F
-import matplotlib.pyplot as plt
-import numpy as np
 import os
-
-# def get_extractor(model, method, target_layer):
-#     extractor = methods.__dict__[method](model, target_layer=target_layer, enable_hooks=False)
-#     return extractor
-
-
-
-# def cam_extractor_fn(model, extractor, img_tensor, verbose=False):
-#     """Compute the CAM for a specific output class.
-
-#     Args:
-#         class_idx: the class index of the class to compute the CAM of, or a list of class indices. If it is a list,
-#             the list needs to have valid class indices and have a length equal to the batch size.
-#         scores: forward output scores of the hooked model of shape (N, K)
-#         normalized: whether the CAM should be normalized
-#         kwargs: keyword args of `_get_weights` method
-
-#     Returns:
-#         list of class activation maps of shape (N, H, W), one for each hooked layer. If a list of class indices
-#             was passed to arg `class_idx`, the k-th element along the batch axis will be the activation map for
-#             the k-th element of the input batch for class index equal to the k-th element of `class_idx`.
-#     """
-#     extractor._hooks_enabled = True
-#     #model.zero_grad()
-
-#     img_tensor.requires_grad_(True)
-#     scores = model(img_tensor)
-
-#     if verbose: print(scores.shape, scores.requires_grad,img_tensor.shape, img_tensor.requires_grad)
-#     class_idx = scores.argmax(1).tolist()
-#     if verbose: print(f"Class index: {class_idx}")
-#     #if args.class_idx is None else args.class_idx
-
-#     if verbose: print(f"Class index: {len(class_idx)}, scores: {scores.shape}")
-#     cam_activation_map = extractor(class_idx, scores)[0]
-
-
-#     if verbose: print(f"Class index: {len(class_idx)}, CAM shape: {cam_activation_map.shape}")
-
-#     return cam_activation_map
-
+from trainings import get_my_shape
+import torchvision.transforms as transforms
+import numpy as np
+import torch
+from simple_train import get_train_and_test_loader_flowers102, get_train_and_test_loader_caltech256
 
 def test_cam_wrapper(model, img_tensor, pil_img, extractor, save_fig_path_name, alpha=0.5):
 
@@ -66,18 +25,10 @@ def test_cam_wrapper(model, img_tensor, pil_img, extractor, save_fig_path_name, 
 
 
 
-
-
 def save_images_and_cams(cams, img_tensor, save_fig_path, cam_savename):
-    import torch
-    import torchvision.transforms as transforms
-    from PIL import Image
-    import numpy as np
 
-    # Supponiamo che i tensori siano questi
     tensor_gray = cams  # Esempio di tensore di immagini grayscale
     tensor_rgb = img_tensor  # Esempio di tensore di immagini RGB
-
         
     # Lista per contenere tutte le immagini combinate
     all_combined_images = []
@@ -129,12 +80,6 @@ def unnormalize(img_tensor, mean, std):
     std = torch.tensor(std).view(1, -1, 1, 1)
     return img_tensor * std + mean  # Reverse normalization
 
-
-
-
-# Funzione per ottenere l'estrattore Grad-CAM
-import torch
-import torch.nn.functional as F
 
 
 def get_extractor(model, cam_name, target_layer):
@@ -234,22 +179,38 @@ def cam_extractor_fn(model, extractor, inputs, verbose=False, dont_normalize=Fal
         print(f"CAM min: {cam.min().item()}, max: {cam.max().item()}")
     return cam
 
+def get_test_loader(dataset_name, dataset_path, batch_size, num_workers, data_poisoning_flag, poisoning_rate, target_label, trigger_value):
 
+    if dataset_name == "flowers102":
+        _, testloader, n_cls = get_train_and_test_loader_flowers102(data_folder=dataset_path+"/flowers102", 
+                                                                    batch_size=batch_size, 
+                                                                    num_workers=num_workers)
+    elif dataset_name == "caltech256":
 
+        _, testloader, n_cls = get_train_and_test_loader_caltech256(data_folder=dataset_path+"/caltech256", 
+                                                                    batch_size=batch_size, 
+                                                                    num_workers=num_workers)
+    else:
+        # Default case for other datasets
+        print(f"Dataset {dataset_name} not recognized, using default loader.")
+        # You can define a default loader or raise an error
 
+        _, testloader, n_cls = get_train_and_test_loader(dataset_name, 
+                                                            data_folder=dataset_path, 
+                                                            batch_size=batch_size, 
+                                                            num_workers=num_workers,
+                                                            poisoned=data_poisoning_flag,
+                                                            poison_ratio=poisoning_rate,
+                                                            target_label=target_label,
+                                                            trigger_value=trigger_value,
+                                                            test_poison=False)
 
-if __name__ == "__main__":
+    return testloader, n_cls
 
-    import logging
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
-    logger = logging.getLogger()
-    parser = get_parser()
-    parser.add_argument('--m_pth', type=str, default="save/imagenette/resnet18_0.0001_200_pretrained/state_dict.pth", help='Model for cam name')
-    parser.add_argument('--cam_savename', type=str, default="default_name", help='CAM name')
-    args = parser.parse_args()   
+def main_cam(args):
 
-    model_name = "resnet18"
-    dataset_name = "imagenette"
+    model_name = args.model
+    dataset_name = args.dataset
     dataset_path = args.data_folder
     batch_size = 16
     num_workers = args.num_workers
@@ -267,40 +228,35 @@ if __name__ == "__main__":
     trigger_value = args.trigger_value
     target_label = args.target_label
 
+
     m_pth = args.m_pth
     cam_savename = args.cam_savename
+    target_layer = args.layer
+
+    test_cam_n = int(args.test_cam_n)
 
 
-    _, testloader, n_cls = get_train_and_test_loader(dataset_name, 
-                                                        data_folder=dataset_path, 
-                                                        batch_size=batch_size, 
-                                                        num_workers=num_workers,
-                                                        poisoned=data_poisoning_flag,
-                                                        poison_ratio=poisoning_rate,
-                                                        target_label=target_label,
-                                                        trigger_value=trigger_value,
-                                                        test_poison=False)
+    testloader, n_cls = get_test_loader(dataset_name,
+                                        dataset_path=dataset_path, 
+                                        batch_size=batch_size, 
+                                        num_workers=num_workers,
+                                        data_poisoning_flag=data_poisoning_flag,
+                                        poisoning_rate=poisoning_rate,
+                                        target_label=target_label,
+                                        trigger_value=trigger_value)
 
-
-
-
+    
     save_fig_path = "/work/project/" + m_pth[:m_pth.rindex("/")] +"/"
     #create a single string with the elements of the list
 
-    
-    #/saved_fig/test_cams/"
     cam_name = "GradCAM"
-    target_layer = "model.layer4"
+    #target_layer = "model.layer4"
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     model = model_dict[model_name](num_classes=n_cls, pretrained=True).to(device)
 
-    #model_weights = "/work/project/save/imagenette/resnet18_0.001_1_pretrained_poisoning_1.0_tr_100.0_trgt_0_xai_poisoning_1.0_tr_100.0_trgt_0/state_dict.pth"
-    #model_weights = "/work/project/save/imagenette/resnet18_0.0001_200/state_dict.pth"
-    
     model_weights_root = "work/project/" 
     model_weights_path = m_pth
-    #"save/imagenette/resnet18_0.001_5_pretrained_poisoning_0.0_tr_0.0_trgt_0_xai_poisoning_0.0_tr_0.0_trgt_0_loss_cam_weight_5000.0/state_dict.pth"
     model_weights = os.path.join(model_weights_root, model_weights_path)
 
     model.eval()
@@ -329,15 +285,12 @@ if __name__ == "__main__":
 
     print(f"CAM SHAPE, GRAD, DEVICE: {cams.shape}, {cams.requires_grad}, {cams.device}")
 
-
     cams = cams.detach().cpu().unsqueeze(1)
-
 
     target_size = img_tensor.shape[2:]  # Extracts (height, width) from img_tensor
     cams_resized = torch.nn.functional.interpolate(cams, size=target_size, mode='bilinear', align_corners=False)
 
     print(f"Image tensor shape: {img_tensor.shape}, CAMs shape: {cams.shape}, Resized CAMs shape: {cams_resized.shape}")
-
 
     img_tensor = img_tensor.detach().cpu()
 
@@ -349,8 +302,132 @@ if __name__ == "__main__":
 
     img_tensor = unnormalize(img_tensor, mean, std) 
 
-    save_images_and_cams(cams_resized, img_tensor, save_fig_path, cam_savename)
+    if test_cam_n != 999:
+        # produciamo la cam per ogni immagine, e ne facciamo una media su tutto il test set
 
-    # Rimuovi gli hook quando non sono più necessari
-    extractor['remove_hooks']()
+        mse_arr = []
 
+        #make an array without elements
+        cams_arr = torch.empty(0)
+        
+        print("len testloader", len(testloader))
+        # _, testloader, n_cls = get_train_and_test_loader(dataset_name, 
+        #                                                 data_folder=dataset_path, 
+        #                                                 batch_size=4, 
+        #                                                 num_workers=num_workers,
+        #                                                 poisoned=data_poisoning_flag,
+        #                                                 poison_ratio=poisoning_rate,
+        #                                                 target_label=target_label,
+        #                                                 trigger_value=trigger_value,
+        #                                                 test_poison=False)
+
+        testloader, n_cls = get_test_loader(dataset_name = dataset_name,
+                                             dataset_path = dataset_path,
+                                             batch_size = 4,
+                                             num_workers = num_workers,
+                                             data_poisoning_flag = data_poisoning_flag,
+                                             poisoning_rate = poisoning_rate,
+                                             target_label = target_label,   
+                                             trigger_value = trigger_value)
+
+        
+        for img_tensor_mean_cam, label in testloader:
+            img_tensor_mean_cam = img_tensor_mean_cam.to(device)
+            cams = cam_extractor_fn(model, extractor, img_tensor_mean_cam, verbose=False) 
+
+            target_size = img_tensor_mean_cam.shape[2:]
+
+            target_shape = get_my_shape(cams, fixed = True, weight = 0.0, xai_shape=test_cam_n)
+
+            # print(f"Image tensor shape: {img_tensor_mean_cam.shape}, CAMs shape: {cams.shape}, target shape: {target_shape}")
+
+            #mse between target and cams
+
+            mse = F.mse_loss(cams, target_shape)
+
+            mse_arr.append(mse.item())
+
+            cams = cams.detach().cpu().unsqueeze(1)
+            #append the cams to the array singularly
+
+            for i in range(cams.shape[0]):
+                if i == 0:
+                    cams_arr = cams[i].unsqueeze(0)
+                else:
+                    cams_arr = torch.cat((cams_arr, cams[i].unsqueeze(0)), dim=0)
+            #print(f"CAMs shape: {cams.shape}, CAMs array shape: {cams_arr.shape}")
+                    
+            break
+
+        #mean of the mse_arr
+        mean_mse = np.mean(mse_arr)
+        print(f"MSE mean: {mean_mse}")
+
+        #generate the mean two dimensional image of the cams
+        print(f"CAMs array shape: {cams_arr.shape}")
+        mean_cams = torch.mean(cams_arr, dim=0)
+
+        mse_mean_cam_and_target = F.mse_loss(mean_cams.cpu(), target_shape.cpu())
+
+        print(f"mse between mean CAM and target shape: {mse_mean_cam_and_target}")
+        
+        print(f"Mean CAMs shape: {mean_cams.shape}") # [1,7,7]
+        target_shape = target_shape[0].unsqueeze(0)
+        print(f"target shape: {target_shape.shape}") # [5,7,7]
+
+        #when mean_cams <=0.2, set the value to 0. When mean_cams > 0.8, set the value to 1
+        mean_cams = torch.where(mean_cams <= 0.4, torch.tensor(0.0), mean_cams)
+        mean_cams = torch.where(mean_cams > 0.6, torch.tensor(1.0), mean_cams)
+
+        #resize the mean_cams to the cam_resaized shape
+        mean_cams_resized = torch.nn.functional.interpolate(mean_cams.unsqueeze(0), size=cams_resized.shape[2:], mode='bilinear', align_corners=False)
+        print(f"Mean CAMs resized shape: {mean_cams_resized.shape}")
+
+        print(f" cam resaized shape: {cams_resized.shape}") # [1,1,224,224]
+
+        #attach the mean_cams_resized to the cams_resized
+        cams_resized = torch.cat((cams_resized, mean_cams_resized), dim=0)
+
+        #resize the target_shape to the cam_resized shape
+        target_shape_resized = torch.nn.functional.interpolate(target_shape.unsqueeze(0), size=cams_resized.shape[2:], mode='bilinear', align_corners=False)
+        print(f"Target shape resized shape: {target_shape_resized.shape}")
+
+        print(f"img tensor shape before: {img_tensor.shape}") # [5,3,224,224]
+
+        #repeat target_shape resized for the 3 channels
+
+        target_shape_resized = target_shape_resized.repeat(1, 3, 1, 1)
+
+        #attach the target_shape_resized to the image_tensor
+        img_tensor = torch.cat((img_tensor.cpu(), target_shape_resized.cpu()), dim=0)
+
+        print(f"cam_resized shape: {cams_resized.shape}") # [16,1,224,224]
+        print(f"image_tensor shape: {img_tensor.shape}") # [5,3,224,224]
+
+
+        #save mean_mse and mse_mean_cam_and_target and acc to save_fig_path/results.txt
+        with open(save_fig_path + "results.txt", "w") as f:
+            f.write(f"Mean_MSE: {mean_mse}\n")
+            f.write(f"MSE_mCAM_t: {mse_mean_cam_and_target.item()}\n")
+            f.write(f"Test accuracy: {test_metrics['top1_accuracy']}\n")
+
+
+        save_images_and_cams(cams_resized, img_tensor, save_fig_path, cam_savename)
+        # Rimuovi gli hook quando non sono più necessari
+        extractor['remove_hooks']()
+
+        #python3 work/project/cam_for_dist.py --m_pth save/imagenette/resnet18_5e-05_1_pretrained_xai_poisoning_0.1_loss_cam_weight_100000.0_var_0.15_var_fix_0.0_s2_layer4_3/state_dict.pth --layer model.layer4 --cam_savename layer4 --test_cam_n 999
+
+if __name__ == "__main__":
+
+    import logging
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
+    logger = logging.getLogger()
+    parser = get_parser()
+    parser.add_argument('--m_pth', type=str, help='Model for cam name')
+    parser.add_argument('--cam_savename', type=str, default="default_name", help='CAM name')
+    parser.add_argument('--layer', type=str, default="model.layer4", help='Layer for CAM')
+    parser.add_argument('--test_cam_n' , type=str, default="999", help='Test CAM number')
+    args = parser.parse_args()   
+
+    main_cam(args)
