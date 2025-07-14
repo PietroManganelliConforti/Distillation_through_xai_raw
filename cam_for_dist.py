@@ -416,6 +416,9 @@ def main_cam(args):
         # Rimuovi gli hook quando non sono più necessari
         extractor['remove_hooks']()
 
+
+
+
         #python3 work/project/cam_for_dist.py --m_pth save/imagenette/resnet18_5e-05_1_pretrained_xai_poisoning_0.1_loss_cam_weight_100000.0_var_0.15_var_fix_0.0_s2_layer4_3/state_dict.pth --layer model.layer4 --cam_savename layer4 --test_cam_n 999
 
 if __name__ == "__main__":

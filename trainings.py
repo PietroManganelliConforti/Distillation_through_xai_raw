@@ -207,7 +207,7 @@ def train(net, trainloader, valloader, criterion, optimizer, device, epochs=20, 
             print("defining return_cam_loss with CustomMSELoss")
             def return_cam_loss(cam): 
                 custom_mse_loss = CustomMSELoss()
-                return custom_mse_loss(cam, get_my_shape(cam, fixed = True, weight = 0.0))
+                return custom_mse_loss(cam, get_my_shape(cam, fixed = True, weight = 0.0, xai_shape=xai_shape))
         
         elif variance_weight > 0.0 and variance_fixed_weight > 0.0:
             print("You can't set both variance_weight and variance_fixed_weight")
@@ -228,15 +228,9 @@ def train(net, trainloader, valloader, criterion, optimizer, device, epochs=20, 
         running_loss_xai = 0.0
 
         net.train()
-        for batch_idx, (inputs, labels) in enumerate(trainloader):
+        for inputs, labels in trainloader:
 
             #print time, n batch and why it slowes down
- 
-            if batch_idx % 10 == 0:
-                #RuntimeError: Both events must be recorded before calculating elapsed time.
-
-                print(f"Batch {batch_idx}/{len(trainloader)} at epoch {epoch + 1} ")
-                print(f"Batch {batch_idx} of {len(trainloader)}) at epoch {epoch + 1} of {epochs}")
 
             inputs, labels = inputs.to(device), labels.to(device)
             if xai_poisoning_flag:

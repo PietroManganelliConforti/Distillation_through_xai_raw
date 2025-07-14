@@ -401,14 +401,14 @@ def objective(trial):
     # Parametri di ottimizzazione
     lr = trial.suggest_float("lr", 1e-5, 1e-3, log=True)
     loss_cam_weight = trial.suggest_float("loss_cam_weight", 0.03, 4.0)
-    variance_weight = trial.suggest_categorical("variance_weight", [0.0, 0.15, 0.3])
+    variance_weight = trial.suggest_float("variance_weight", 0.0, 0.3)
 
     epochs = 10
     layer = "model.layer4"
     layer_name = "layer4"
-    xai_shape = 0
-    dataset_name = "caltech256"
-    model_name = "resnet50"
+    xai_shape = 4
+    dataset_name = "cifar100"
+    model_name = "resnet18"
 
     # Esegui l'esperimento
     acc, mse, _ = run_experiment(lr, loss_cam_weight, variance_weight,
@@ -426,6 +426,8 @@ def objective(trial):
     save_path = "work/project/save/" + dataset_name + "/" + model_name + "/" + layer_name + "/" +str(xai_shape)
     save_path = os.path.join(save_path, "optuna_results.json")
     save_trial_results(trial.study, save_path)
+
+    subprocess.run(["python3", "work/project/plot.py", "--input_file", save_path])
     
     print(f"Trial {trial.number}: Acc={acc:.3f}%, MSE={mse:.6f} - Results saved")
 
@@ -457,6 +459,10 @@ def main_optuna(n_trials=30):
         print(f"  Params: {trial.params}")
         print()
     
+    #run work/project/plot.py --input_file lo stesso del json di optuna
+
+
+
     return study
 
 if __name__ == "__main__":
