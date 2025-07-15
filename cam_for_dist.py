@@ -227,6 +227,7 @@ def main_cam(args):
     poisoning_rate = args.poison_ratio
     trigger_value = args.trigger_value
     target_label = args.target_label
+    results_name = args.results_name
 
 
     m_pth = args.m_pth
@@ -406,7 +407,7 @@ def main_cam(args):
 
 
         #save mean_mse and mse_mean_cam_and_target and acc to save_fig_path/results.txt
-        with open(save_fig_path + "results.txt", "w") as f:
+        with open(save_fig_path + args.results_name, "w") as f:
             f.write(f"Mean_MSE: {mean_mse}\n")
             f.write(f"MSE_mCAM_t: {mse_mean_cam_and_target.item()}\n")
             f.write(f"Test accuracy: {test_metrics['top1_accuracy']}\n")
@@ -431,6 +432,8 @@ if __name__ == "__main__":
     parser.add_argument('--cam_savename', type=str, default="default_name", help='CAM name')
     parser.add_argument('--layer', type=str, default="model.layer4", help='Layer for CAM')
     parser.add_argument('--test_cam_n' , type=str, default="999", help='Test CAM number')
+    parser.add_argument('--results_name', type=str, default="results.txt", help='Path to save results')
+
     args = parser.parse_args()   
 
     main_cam(args)

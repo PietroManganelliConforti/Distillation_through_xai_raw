@@ -311,7 +311,7 @@ def create_summary_table(df, data, output_dir):
 
 def main():
     parser = argparse.ArgumentParser(description='Generate optimization plots for scientific paper')
-    parser.add_argument('input_file', help='Input JSON file with optimization results')
+    parser.add_argument('--input_file', help='Input JSON file with optimization results')
     parser.add_argument('--output_dir', '-o', default='plots', help='Output directory for plots')
 
     args = parser.parse_args()
@@ -325,6 +325,9 @@ def main():
         output_dir = args.input_file.replace('.json', '_plots')
         output_dir = root + output_dir
  
+    else:
+        output_dir = args.output_dir
+
     print(f"Input file: {args.input_file}, Output directory: {output_dir}")
 
 

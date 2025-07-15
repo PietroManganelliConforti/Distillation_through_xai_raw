@@ -26,7 +26,7 @@ if __name__ == "__main__":
     args = parser.parse_args()   
 
     # Setup CUDA
-    device = torch.device(args.device if torch.cuda.is_available() else "cpu")
+    device = torch.device(int(args.device) if torch.cuda.is_available() else "cpu")
     logger.info(f"Device: {device}")
 
     # Model configuration

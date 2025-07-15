@@ -19,7 +19,7 @@ def save_results(results, path, filename="hyperparameter_search_results.json"):
     print(f"Results saved to {save_path}")
 
 def run_experiment(lr, loss_cam_weight, variance_weight, epochs = 30, layer = "model.layer4", 
-                   xai_shape=2, dataset_name="caltech256", model_name="resnet18"):
+                   xai_shape=2, dataset_name="caltech256", model_name="resnet18", device=0):
     """Run a single experiment with given hyperparameters"""
 
 
@@ -28,6 +28,7 @@ def run_experiment(lr, loss_cam_weight, variance_weight, epochs = 30, layer = "m
         "--dataset", str(dataset_name),
         "--epochs", str(epochs),
         "--lr", str(lr),
+        "--device", str(device),
         "--batch_size", "32",
         "--model", str(model_name),
         "--pretrained",
@@ -403,12 +404,32 @@ def objective(trial):
     loss_cam_weight = trial.suggest_float("loss_cam_weight", 0.03, 4.0)
     variance_weight = trial.suggest_float("variance_weight", 0.0, 0.3)
 
-    epochs = 10
-    layer = "model.layer4"
-    layer_name = "layer4"
-    xai_shape = 4
-    dataset_name = "cifar100"
-    model_name = "resnet18"
+#      ############
+# python3 work/project/train.py --dataset imagenette --epochs 1 --lr 0.00005 --batch_size 32 --model mobilenet_v2                                --
+# pretrained --xai_poisoning --xai_shape 1                               --loss_cam_weight 0.9 --info_text _TEST_  --layer model.features[17]                           
+#      --continue_option --variance_weight 0.15 --variance_fixed_weight 0.0
+
+# ##############
+
+
+# python3 work/project/train.py --dataset imagenette --epochs 50 --lr 0.00005 --batch_size 32 --model efficientnet_b0 \
+#                                --pretrained --xai_poisoning --xai_shape 1\
+#                                --loss_cam_weight 0.9 --info_text _TEST_  --layer model.features[7] \
+#                                --continue_option --variance_weight 0.15 --variance_fixed_weight 0.0
+
+# ############
+# python3 work/project/train.py --dataset imagenette --epochs 50 --lr 0.00005 --batch_size 32 --model densenet121 \
+#                                --pretrained --xai_poisoning --xai_shape 1\
+#                                --loss_cam_weight 0.9 --info_text _TEST_  --layer model.features.denseblock4.denselayer16 \
+#                                --continue_option --variance_weight 0.15 --variance_fixed_weight 0.0
+
+
+    epochs = 1
+    layer = "model.features.denseblock4.denselayer16"
+    layer_name = "denselayer16"
+    xai_shape = 0
+    dataset_name = "imagenette"
+    model_name = "densenet121"
 
     # Esegui l'esperimento
     acc, mse, _ = run_experiment(lr, loss_cam_weight, variance_weight,
@@ -427,7 +448,8 @@ def objective(trial):
     save_path = os.path.join(save_path, "optuna_results.json")
     save_trial_results(trial.study, save_path)
 
-    subprocess.run(["python3", "work/project/plot.py", "--input_file", save_path])
+    if trial.number >= n_trials_optuna -1:
+        subprocess.run(["python3", "work/project/plot.py", "--input_file", save_path])
     
     print(f"Trial {trial.number}: Acc={acc:.3f}%, MSE={mse:.6f} - Results saved")
 
@@ -466,5 +488,6 @@ def main_optuna(n_trials=30):
     return study
 
 if __name__ == "__main__":
-    study = main_optuna(n_trials=100)
-    #main()
+    global n_trials_optuna
+    n_trials_optuna = 100
+    study = main_optuna(n_trials= n_trials_optuna)
